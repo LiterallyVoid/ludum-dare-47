@@ -153,7 +153,7 @@ class Enemy extends Entity {
 	const player_next = this.game.nextSector(this.game.player.sector);
 	if (this.sector == this.game.player.sector || this.sector == player_next) {
 	    let dist = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
-	    if (dist < 150) {
+	    if (dist < 250) {
 		this.spottedPlayer = true;
 	    }
 	}
@@ -264,12 +264,12 @@ class Player extends Entity {
 
 class Sector {
     // angle: integer between 0 and 3
-    constructor(game, angle, onlyGrid) {
+    constructor(game, angle, spawn) {
 	this.game = game;
 	
 	this.angle = angle;
 	this.entities = [];
-	this.shade = Math.random();
+	//this.shade = Math.random();
 	this.grid = [];
 
 	this.particles = [];
@@ -346,7 +346,7 @@ class Sector {
 		    cell = Math.random() < template_cell ? 1 : 0;
 		}
 		const pos = [(i + this.grid_offset[0] + 0.5) * grid_size, (j + this.grid_offset[1] + 0.5) * grid_size];
-		if (!onlyGrid) {
+		if (spawn.enemy) {
 		    if (template_cell == 2) {
 			let ent = new Enemy({
 			    pos: pos,
@@ -355,6 +355,15 @@ class Sector {
 			});
 			ent.velocity[0] = Math.random() * 20 - 10;
 			ent.velocity[1] = Math.random() * 20 - 10;
+		    }
+		}
+		if (spawn.player) {
+		    if (template_cell == 3) {
+			let ent = new Player({
+			    pos: pos,
+			    game: this.game,
+			    sector: this,
+			});
 		    }
 		}
 		this.grid[i].push(cell);
@@ -452,13 +461,13 @@ class Sector {
 
     // different function because all sectors must render before any entities
     render() {
-	ctx.fillStyle = `rgb(${this.shade * 255}, ${this.shade * 255}, ${this.shade * 255})`;
+	// ctx.fillStyle = `rgb(${this.shade * 255}, ${this.shade * 255}, ${this.shade * 255})`;
 	
-	ctx.beginPath();
-	ctx.moveTo(0, 0);
-	ctx.arc(0, 0, arena_size, this.angle * Math.PI * 0.5, (this.angle + 1) * Math.PI * 0.5);
-	ctx.lineTo(0, 0);
-	ctx.fill();
+	// ctx.beginPath();
+	// ctx.moveTo(0, 0);
+	// ctx.arc(0, 0, arena_size, this.angle * Math.PI * 0.5, (this.angle + 1) * Math.PI * 0.5);
+	// ctx.lineTo(0, 0);
+	// ctx.fill();
 
 	const neighbors = [
 	    [-1, 0],
@@ -545,16 +554,11 @@ class Game {
 	this.sectors = [];
 	this.entities = [];
 
-	this.addSector(true);
-	this.addSector(true);
-	this.addSector(true);
-	this.addSector(true);
-
-	this.player = new Player({
-	    pos: [50, 50],
-	    sector: this.sectors[3],
-	    game: this,
-	});
+	this.addSector({enemy: false, player: false});
+	this.addSector({enemy: false, player: false});
+	this.addSector({enemy: false, player: false});
+	this.addSector({enemy: false, player: true});
+	this.player = this.entities[0]; // hope this works haha
 
 	this.shake = 0;
     }
@@ -589,7 +593,7 @@ class Game {
     tick() {
 	var player_index = this.sectors.indexOf(this.player.sector);
 	while (player_index > (this.sectors.length - 4)) {
-	    this.addSector(false);
+	    this.addSector({enemy: true, player: false});
 	}
 	while (player_index > 4) {
 	    this.removeSector();
@@ -654,14 +658,14 @@ class Game {
     }
 
     // add another sector after the last sector
-    addSector(onlyGrid) {
+    addSector(spawn) {
 	if (this.sectors.length == 0) {
-	    this.sectors.push(new Sector(this, 0, onlyGrid));
+	    this.sectors.push(new Sector(this, 0, spawn));
 	    return;
 	}
 	this.sectors.push(new Sector(this,
-				     (this.sectors[this.sectors.length - 1].angle + 1) % 4
-				     , onlyGrid));
+				     (this.sectors[this.sectors.length - 1].angle + 1) % 4,
+				     spawn));
     }
 
     removeSector() {
