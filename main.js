@@ -189,6 +189,28 @@ class Player extends Entity {
 	this.size = 12;
 	
 	this.refire = 0;
+
+	for (let i = 0; i < 4; i++) {
+	    let x = this.position[0];
+	    let y = this.position[1];
+	    let timer = -i * 10;
+	    let sz = 0;
+	    let lsz = 25;
+	    this.sector.particles.push(() => {
+		timer++;
+		if (timer < 0) return false;
+		const alpha = 1 - (timer / 50);
+		sz = (sz * 0.9) + 200 * 0.1;
+		ctx.strokeStyle = `rgba(0, 255, 0, ${alpha})`;
+		lsz *= 0.9;
+		ctx.lineWidth = lsz;
+
+		ctx.beginPath();
+		ctx.arc(x, y, sz, 0, Math.PI * 2);
+		ctx.stroke();
+		return timer > 50;
+	    });
+	}
     }
 
     collide(ent) {
