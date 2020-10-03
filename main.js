@@ -101,6 +101,12 @@ class Enemy extends Entity {
 	this.rand_vel = [0, 0];
     }
 
+    collide(other) {
+	let offset = [other.position[0] - this.position[0], other.position[1] - this.position[1]];
+	this.velocity[0] -= offset[0] * 0.2;
+	this.velocity[1] -= offset[1] * 0.2;
+    }
+
     kill() {
 	for (let i = 0; i < 10; i++) {
 	    (() => {
