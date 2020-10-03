@@ -270,8 +270,6 @@ class Sector {
 	ctx.arc(0, 0, arena_size, this.angle * Math.PI * 0.5, (this.angle + 1) * Math.PI * 0.5);
 	ctx.lineTo(0, 0);
 	ctx.fill();
-	ctx.fillStyle = '#000';
-	ctx.fillText(this.angle, Math.cos((this.angle + 0.5) * Math.PI * 0.5) * 100, Math.sin((this.angle + 0.5) * Math.PI * 0.5) * 100);
 
 	const neighbors = [
 	    [-1, 0],
