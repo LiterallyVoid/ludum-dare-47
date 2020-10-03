@@ -9,6 +9,7 @@ const quadrant_cell_width = Math.floor(arena_size / grid_size);
 
 const held_keys = {};
 const held_mouse_buttons = {};
+const mouse_position = [0, 0];
 
 let load_max = 0;
 let load_done = 0;
@@ -30,7 +31,7 @@ resource_load((finish) => {
 	.then(response => response.json())
 	.then(data => {
 	    level_data = data;
-	    finish();
+	    setTimeout(finish, 100);
 	});
 });
 
@@ -51,6 +52,8 @@ class Entity {
 	this.hit_wall = false;
 	options.sector.entities.push(this);
     }
+
+    kill() {}
 
     tick() {
 	// ctx.fillStyle = "#804";
@@ -75,11 +78,11 @@ class Entity {
     }
 
     checkCollide(other) {
-	let offset = [
+	const offset = [
 	    this.position[0] - other.position[0],
 	    this.position[1] - other.position[1],
 	];
-	let dist = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
+	const dist = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
 	if (dist < (this.size + other.size) * 0.5) {
 	    this.collide(other);
 	    other.collide(this);
@@ -95,6 +98,46 @@ class Enemy extends Entity {
 
 	this.size = 12;
 	this.spottedPlayer = false;
+	this.rand_vel = [0, 0];
+    }
+
+    kill() {
+	for (let i = 0; i < 10; i++) {
+	    (() => {
+		let timer = 0;
+		let sz = Math.random() * 10;
+		let szmax = sz * (Math.random() * 0.6 + 1);
+		let x = this.position[0];
+		let y = this.position[1];
+		let r = Math.random() * Math.PI * 2;
+		let v = Math.random() * 4;
+		let hit = Math.random() * 20;
+		let c = Math.random() * 255;
+		this.sector.particles.push(() => {
+		    x += Math.cos(r) * v;
+		    y += Math.sin(r) * v;
+		    hit--;
+		    if (hit > 0) {
+			v *= 0.9;
+		    } else {
+			v *= 0.7;
+			let l = 0.05;
+			sz = sz * (1 - l) + szmax * l;
+		    }
+		    ctx.save();
+		    ctx.translate(x, y);
+		    ctx.rotate(r);
+		    ctx.scale(1, 0.6);
+		    ctx.beginPath();
+		    ctx.arc(0, 0, sz, 0, Math.PI * 2);
+		    ctx.fillStyle = `rgba(0, ${c}, 0, ${1.0 - (timer / 100)})`;
+		    ctx.fill();
+		    ctx.restore();
+		    timer++;
+		    return timer > 100;
+		});
+	    })();
+	}
     }
 
     tick() {
@@ -115,11 +158,15 @@ class Enemy extends Entity {
 	    }
 	}
 
+	if (Math.random() < 0.5) {
+	    this.rand_vel[0] = Math.random() * 2 - 1;
+	    this.rand_vel[1] = Math.random() * 2 - 1;
+	}
 	if (this.spottedPlayer) {
-	    this.velocity[0] += Math.random() * 2 - 1;
-	    this.velocity[1] += Math.random() * 2 - 1;
-	    this.velocity[0] += offset[0] * 0.005;
-	    this.velocity[1] += offset[1] * 0.005;
+	    this.velocity[0] += this.rand_vel[0];
+	    this.velocity[1] += this.rand_vel[1];
+	    this.velocity[0] += offset[0] * 0.007;
+	    this.velocity[1] += offset[1] * 0.007;
 	}
 
     	ctx.fillStyle = "#F00";
@@ -149,14 +196,63 @@ class Player extends Entity {
 	super.tick();
 	this.velocity[0] *= 0.5;
 	this.velocity[1] *= 0.5;
-	this.velocity[0] += ((held_keys['D'] || 0) - (held_keys['A'] || 0)) * 1.2;
-	this.velocity[1] += ((held_keys['S'] || 0) - (held_keys['W'] || 0)) * 1.2;
+	this.velocity[0] += ((held_keys['D'] || 0) - (held_keys['A'] || 0)) * 1.6;
+	this.velocity[1] += ((held_keys['S'] || 0) - (held_keys['W'] || 0)) * 1.6;
 	
 	this.refire++;
 
 	if (this.refire > 30 && held_mouse_buttons[0]) {
 	    this.refire = 0;
-	    this.game.shake += 4;
+	    this.game.shake += 20;
+	    for (let i = 0; i < 4; i++) {
+		let angle = Math.atan2(
+		    mouse_position[1] - (this.position[1] + height / 2),
+		    mouse_position[0] - (this.position[0] + width / 2)
+		);
+		angle += (Math.random() * 2 - 1) * 0.15;
+		let end = 0;
+		for (let j = 0; j < 100; j++) {
+		    let pos = [
+			this.position[0] + Math.cos(angle) * end,
+			this.position[1] + Math.sin(angle) * end,
+		    ];
+		    if (this.sector.collidingPoint(pos)) {
+			break;
+		    }
+		    this.sector.entitiesAt(pos, (ent) => {
+			if (ent instanceof Enemy) {
+			    ent.dead = true;
+			}
+		    });
+		    end += 8;
+		}
+		(() => {
+		    let new_end = end;
+		    let timer = 0;
+		    let x = this.position[0];
+		    let y = this.position[1];
+		    this.sector.particles.push(() => {
+			ctx.save();
+			ctx.translate(x, y);
+			//ctx.rotate(angle);
+			if (timer === 0 || timer === 2) {
+			    ctx.strokeStyle = '#FF4';
+			} else if (timer === 1 || timer === 3) {
+			    ctx.strokeStyle = '#F00';
+			} else {
+			    ctx.strokeStyle = `rgba(192, 192, 192, ${ (1.0 - (timer / 30)) * 0.3 })`;
+			}
+			ctx.lineWidth = 2;
+			ctx.beginPath();
+			ctx.moveTo(0, 0);
+			ctx.lineTo(Math.cos(angle) * new_end, Math.sin(angle) * new_end);
+			ctx.stroke();
+			ctx.restore();
+			timer += 1;
+			return timer > 30;
+		    });
+		})();
+	    }
 	}
 
     	ctx.fillStyle = "#0F0";
@@ -252,11 +348,13 @@ class Sector {
 		const pos = [(i + this.grid_offset[0] + 0.5) * grid_size, (j + this.grid_offset[1] + 0.5) * grid_size];
 		if (!onlyGrid) {
 		    if (template_cell == 2) {
-			new Enemy({
+			let ent = new Enemy({
 			    pos: pos,
 			    game: this.game,
 			    sector: this,
 			});
+			ent.velocity[0] = Math.random() * 20 - 10;
+			ent.velocity[1] = Math.random() * 20 - 10;
 		    }
 		}
 		this.grid[i].push(cell);
@@ -284,6 +382,24 @@ class Sector {
 	    return true;
 	}
 	return false;
+    }
+
+    entitiesAt(pos, callback) {
+	const prev = this.game.prevSector(this);
+	const next = this.game.nextSector(this);
+	for (const sec of [prev, next, this]) {
+	    for (let i = 0; i < sec.entities.length; i++) {
+		const ent = sec.entities[i];
+		const offset = [
+		    ent.position[0] - pos[0],
+		    ent.position[1] - pos[1],
+		];
+		const dist = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
+		if (dist < ent.size) {
+		    callback(ent);
+		}
+	    }
+	}
     }
     
     colliding(ent) {
@@ -415,6 +531,7 @@ class Sector {
 		}
 	    }
 	    if (entity.dead) {
+		entity.kill();
 		this.entities.splice(i, 1);
 		i--;
 		this.game.entities.splice(this.game.entities.indexOf(entity), 1);
@@ -460,9 +577,9 @@ class Game {
 	ctx.beginPath();
 	ctx.moveTo(0, 0);
 	if (offset > 0) {
-	    ctx.arc(0, 0, arena_size * 2, cutoff, cutoff + Math.PI);
+	    ctx.arc(0, 0, arena_size * 2, cutoff, cutoff + Math.PI * 1.5);
 	} else {
-	    ctx.arc(0, 0, arena_size * 2, cutoff - Math.PI, cutoff);
+	    ctx.arc(0, 0, arena_size * 2, cutoff - Math.PI * 1.5, cutoff);
 	}
 	ctx.lineTo(0, 0);
 	ctx.clip();
@@ -483,14 +600,21 @@ class Game {
 	ctx.save();
 	ctx.translate(width / 2, height / 2);
 	
-	this.shake *= 0.8;
-	var shake = this.shake * this.shake;
+	this.shake *= 0.6;
+	var shake = this.shake;// * this.shake;
 	ctx.translate(Math.round((Math.random() * 2 - 1) * shake), Math.round((Math.random() * 2 - 1) * shake));
 	
 	for (const sector of this.sectors) {
 	    ctx.save();
 	    if (this.setClipFor(sector)) {
 		sector.render();
+	    }
+	    ctx.restore();
+	}
+	for (const sector of this.sectors) {
+	    ctx.save();
+	    if (this.setClipFor(sector)) {
+		sector.renderParticles();
 	    }
 	    ctx.restore();
 	}
@@ -551,6 +675,11 @@ class Game {
 let game;
 
 function begin() {
+    document.querySelector('#loading').className += ' done';
+    setTimeout(() => {
+	let el = document.querySelector('#loading');
+	el.parentElement.removeChild(el);
+    }, 1000);
     game = new Game();
     tick();
 }
@@ -576,4 +705,9 @@ window.addEventListener('mousedown', (e) => {
 
 window.addEventListener('mouseup', (e) => {
     delete held_mouse_buttons[e.button];
+});
+
+window.addEventListener('mousemove', (e) => {
+    mouse_position[0] = e.clientX;
+    mouse_position[1] = e.clientY;
 });
