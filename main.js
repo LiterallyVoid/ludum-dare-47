@@ -10,13 +10,29 @@ const quadrant_cell_width = Math.floor(arena_size / grid_size);
 const held_keys = {};
 const held_mouse_buttons = {};
 
+let load_max = 0;
+let load_done = 0;
+
+function resource_load(func) {
+    load_max += 1;
+    func(() => {
+	load_done += 1;
+	if (load_done == load_max) {
+	    begin();
+	}
+    });
+}
+
 let level_data = null;
 
-fetch("levels.json")
-    .then(response => response.json())
-    .then(data => {
-	level_data = data;
-    });
+resource_load((finish) => {
+    fetch("levels.json")
+	.then(response => response.json())
+	.then(data => {
+	    level_data = data;
+	    finish();
+	});
+});
 
 // returns diff between -pi and pi
 function angleDiff(a, b) {
@@ -30,18 +46,17 @@ class Entity {
 	this.game.entities.push(this);
 	this.position = [options.pos[0], options.pos[1]];
 	this.velocity = [0, 0];
-	this.size = 0;
+	this.size = 0; // diameter
 	this.sector = options.sector;
 	this.hit_wall = false;
 	options.sector.entities.push(this);
     }
 
     tick() {
-	ctx.fillStyle = "#804";
-	ctx.beginPath();
-	ctx.arc(this.position[0], this.position[1], this.size / 2, 0, Math.PI * 2);
-	ctx.fill();
-
+	// ctx.fillStyle = "#804";
+	// ctx.beginPath();
+	// ctx.arc(this.position[0], this.position[1], this.size / 2, 0, Math.PI * 2);
+	// ctx.fill();
 
 	const start_collide = this.sector.colliding(this);
 	this.hit_wall = false;
@@ -58,17 +73,59 @@ class Entity {
 	    this.hit_wall = true;
 	}
     }
+
+    checkCollide(other) {
+	let offset = [
+	    this.position[0] - other.position[0],
+	    this.position[1] - other.position[1],
+	];
+	let dist = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
+	if (dist < (this.size + other.size) * 0.5) {
+	    this.collide(other);
+	    other.collide(this);
+	}
+    }
+
+    collide(other) {}
 };
 
 class Enemy extends Entity {
     constructor(options) {
 	super(options);
 
-	this.size = 18;
+	this.size = 12;
+	this.spottedPlayer = false;
     }
 
     tick() {
 	super.tick();
+
+	this.velocity[0] *= 0.7;
+	this.velocity[1] *= 0.7;
+	
+	const offset = [
+	    this.game.player.position[0] - this.position[0],
+	    this.game.player.position[1] - this.position[1],
+	];
+	const player_next = this.game.nextSector(this.game.player.sector);
+	if (this.sector == this.game.player.sector || this.sector == player_next) {
+	    let dist = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
+	    if (dist < 150) {
+		this.spottedPlayer = true;
+	    }
+	}
+
+	if (this.spottedPlayer) {
+	    this.velocity[0] += Math.random() * 2 - 1;
+	    this.velocity[1] += Math.random() * 2 - 1;
+	    this.velocity[0] += offset[0] * 0.005;
+	    this.velocity[1] += offset[1] * 0.005;
+	}
+
+    	ctx.fillStyle = "#F00";
+	ctx.beginPath();
+	ctx.arc(this.position[0], this.position[1], 10, 0, Math.PI * 2);
+	ctx.fill();
     }
 };
 
@@ -79,6 +136,13 @@ class Player extends Entity {
 	this.size = 12;
 	
 	this.refire = 0;
+    }
+
+    collide(ent) {
+	if (ent && ent instanceof Enemy) {
+	    this.dead = true;
+	    console.log('player ded');
+	}
     }
 
     tick() {
@@ -94,18 +158,25 @@ class Player extends Entity {
 	    this.refire = 0;
 	    this.game.shake += 4;
 	}
+
+    	ctx.fillStyle = "#0F0";
+	ctx.beginPath();
+	ctx.arc(this.position[0], this.position[1], this.size / 2, 0, Math.PI * 2);
+	ctx.fill();
     }
 };
 
 class Sector {
     // angle: integer between 0 and 3
-    constructor(game, angle) {
+    constructor(game, angle, onlyGrid) {
 	this.game = game;
 	
 	this.angle = angle;
 	this.entities = [];
 	this.shade = Math.random();
 	this.grid = [];
+
+	this.particles = [];
 
 	switch (this.angle) {
 	case 0:
@@ -179,12 +250,14 @@ class Sector {
 		    cell = Math.random() < template_cell ? 1 : 0;
 		}
 		const pos = [(i + this.grid_offset[0] + 0.5) * grid_size, (j + this.grid_offset[1] + 0.5) * grid_size];
-		if (template_cell == 2) {
-		    new Enemy({
-			pos: pos,
-			game: this.game,
-			sector: this,
-		    });
+		if (!onlyGrid) {
+		    if (template_cell == 2) {
+			new Enemy({
+			    pos: pos,
+			    game: this.game,
+			    sector: this,
+			});
+		    }
 		}
 		this.grid[i].push(cell);
 	    }
@@ -318,10 +391,34 @@ class Sector {
 	    }
 	}
     }
+
+    renderParticles() {
+	for (let i = 0; i < this.particles.length; i++) {
+	    if ((this.particles[i])()) {
+		this.particles.splice(i, 1);
+		i--;
+	    }
+	}
+    }
     
     tick() {
-	for (const entity of this.entities) {
+	const next = this.game.nextSector(this);
+	for (let i = 0; i < this.entities.length; i++) {
+	    const entity = this.entities[i];
 	    entity.tick();
+	    for (let j = i + 1; j < this.entities.length; j++) {
+		entity.checkCollide(this.entities[j]);
+	    }
+	    if (next) {
+		for (let j = 0; j < next.entities.length; j++) {
+		    entity.checkCollide(next.entities[j]);
+		}
+	    }
+	    if (entity.dead) {
+		this.entities.splice(i, 1);
+		i--;
+		this.game.entities.splice(this.game.entities.indexOf(entity), 1);
+	    }
 	}
     }
 };
@@ -331,10 +428,10 @@ class Game {
 	this.sectors = [];
 	this.entities = [];
 
-	this.addSector();
-	this.addSector();
-	this.addSector();
-	this.addSector();
+	this.addSector(true);
+	this.addSector(true);
+	this.addSector(true);
+	this.addSector(true);
 
 	this.player = new Player({
 	    pos: [50, 50],
@@ -355,7 +452,7 @@ class Game {
 	const offset = player_index - this_index;
 	const cutoff = Math.atan2(this.player.position[1], this.player.position[0]) + Math.PI;
 	if (offset === -1 || offset === 1) {
-	    return true;
+	    //return true;
 	}
 	if (offset < -2 || offset > 2) {
 	    return false;
@@ -375,7 +472,7 @@ class Game {
     tick() {
 	var player_index = this.sectors.indexOf(this.player.sector);
 	while (player_index > (this.sectors.length - 4)) {
-	    this.addSector();
+	    this.addSector(false);
 	}
 	while (player_index > 4) {
 	    this.removeSector();
@@ -433,14 +530,14 @@ class Game {
     }
 
     // add another sector after the last sector
-    addSector() {
+    addSector(onlyGrid) {
 	if (this.sectors.length == 0) {
-	    this.sectors.push(new Sector(this, 0));
+	    this.sectors.push(new Sector(this, 0, onlyGrid));
 	    return;
 	}
 	this.sectors.push(new Sector(this,
-	    (this.sectors[this.sectors.length - 1].angle + 1) % 4
-	));
+				     (this.sectors[this.sectors.length - 1].angle + 1) % 4
+				     , onlyGrid));
     }
 
     removeSector() {
@@ -451,14 +548,17 @@ class Game {
     }
 };
 
-const game = new Game();
+let game;
+
+function begin() {
+    game = new Game();
+    tick();
+}
 
 function tick() {
     game.tick();
     requestAnimationFrame(tick);
 }
-
-tick();
 
 window.addEventListener('keydown', (e) => {
     held_keys[e.keyCode || e.which || 0] = true;
