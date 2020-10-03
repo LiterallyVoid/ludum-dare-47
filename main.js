@@ -5,10 +5,18 @@ const width = 800;
 const height = 600;
 const arena_size = 300; // radius
 const grid_size = 24;
-const quadrant_cell_width = Math.ceil(arena_size / grid_size);
+const quadrant_cell_width = Math.floor(arena_size / grid_size);
 
 const held_keys = {};
 const held_mouse_buttons = {};
+
+let level_data = null;
+
+fetch("levels.json")
+    .then(response => response.json())
+    .then(data => {
+	level_data = data;
+    });
 
 // returns diff between -pi and pi
 function angleDiff(a, b) {
@@ -19,21 +27,48 @@ function angleDiff(a, b) {
 class Entity {
     constructor(options) {
 	this.game = options.game;
+	this.game.entities.push(this);
 	this.position = [options.pos[0], options.pos[1]];
 	this.velocity = [0, 0];
 	this.size = 0;
 	this.sector = options.sector;
+	this.hit_wall = false;
 	options.sector.entities.push(this);
     }
 
     tick() {
 	ctx.fillStyle = "#804";
 	ctx.beginPath();
-	ctx.arc(this.position[0], this.position[1], 10, 0, Math.PI * 2);
+	ctx.arc(this.position[0], this.position[1], this.size / 2, 0, Math.PI * 2);
 	ctx.fill();
 
+
+	const start_collide = this.sector.colliding(this);
+	this.hit_wall = false;
 	this.position[0] += this.velocity[0];
+	if (this.sector.colliding(this) && !start_collide) {
+	    this.position[0] -= this.velocity[0];
+	    this.velocity[0] = 0;
+	    this.hit_wall = true;
+	}
 	this.position[1] += this.velocity[1];
+	if (this.sector.colliding(this) && !start_collide) {
+	    this.position[1] -= this.velocity[1];
+	    this.velocity[1] = 0;
+	    this.hit_wall = true;
+	}
+    }
+};
+
+class Enemy extends Entity {
+    constructor(options) {
+	super(options);
+
+	this.size = 18;
+    }
+
+    tick() {
+	super.tick();
     }
 };
 
@@ -41,15 +76,17 @@ class Player extends Entity {
     constructor(options) {
 	super(options);
 
+	this.size = 12;
+	
 	this.refire = 0;
     }
 
     tick() {
 	super.tick();
-	this.velocity[0] *= 0.8;
-	this.velocity[1] *= 0.8;
-	this.velocity[0] += (held_keys['D'] || 0) - (held_keys['A'] || 0);
-	this.velocity[1] += (held_keys['S'] || 0) - (held_keys['W'] || 0);
+	this.velocity[0] *= 0.5;
+	this.velocity[1] *= 0.5;
+	this.velocity[0] += ((held_keys['D'] || 0) - (held_keys['A'] || 0)) * 1.2;
+	this.velocity[1] += ((held_keys['S'] || 0) - (held_keys['W'] || 0)) * 1.2;
 	
 	this.refire++;
 
@@ -86,11 +123,70 @@ class Sector {
 	default:
 	    throw "Angle is not 0, 1, 2, or 3!";
 	}
+
+	let chosen_sector = null;
+	if (level_data == null) {
+	    chosen_sector = [];
+	    for (let i = 0; i <= quadrant_cell_width; i++) {
+		chosen_sector.push([]);
+		for (let j = 0; j <= quadrant_cell_width; j++) {
+		    chosen_sector[i].push(0);
+		}
+	    }
+	} else {
+	    chosen_sector = level_data[Math.floor(Math.random() * 6)];
+	}
+
+	const mirror = Math.random() < 0.5 ? false : true;
 	
 	for (let i = 0; i < quadrant_cell_width; i++) {
 	    this.grid.push([]);
 	    for (let j = 0; j < quadrant_cell_width; j++) {
-		this.grid[i].push(Math.random() < 0.5 ? 0 : 1);
+		let new_i = i;
+		let new_j = j;
+		if (this.angle == 1 || this.angle == 2) {
+		    new_i++;
+		}
+		if (this.angle == 2 || this.angle == 3) {
+		    new_j++;
+		}
+		let tmp_new_i = new_i;
+		let tmp_new_j = new_j;
+		switch (this.angle) {
+		case 0:
+		    new_i = new_j;
+		    new_j = 12 - tmp_new_i;
+		    break;
+		case 1:
+		    new_i = 12 - new_i;
+		    new_j = 12 - new_j;
+		    break;
+		case 2:
+		    new_i = 12 - new_j;
+		    new_j = tmp_new_i;
+		    break;
+		case 3:
+		    break;
+		}
+		if (mirror) {
+		    const tmp = new_i;
+		    new_i = 12 - new_j;
+		    new_j = 12 - tmp;
+		}
+		const template_cell = chosen_sector[new_i][new_j]
+		let cell = 0;
+		if (template_cell >= 0 && template_cell <= 1) {
+		    cell = Math.random() < template_cell ? 1 : 0;
+		}
+		const pos = [(i + this.grid_offset[0] + 0.5) * grid_size, (j + this.grid_offset[1] + 0.5) * grid_size];
+		if (template_cell == 2) {
+		    new Enemy({
+			pos: pos,
+			game: this.game,
+			sector: this,
+		    });
+		}
+		this.grid[i].push(cell);
 	    }
 	}
     }
@@ -110,6 +206,28 @@ class Sector {
 	ent.sector = other;
     }
 
+    collidingPoint(pos) {
+	if (this.getCell(Math.floor(pos[0] / grid_size), Math.floor(pos[1] / grid_size)) == 1) {
+	    return true;
+	}
+	return false;
+    }
+    
+    colliding(ent) {
+	for (let x = -1; x <= 1; x += 2) {
+	    for (let y = -1; y <= 1; y += 2) {
+		const pos = [
+		    ent.position[0] + ent.size * x * 0.5,
+		    ent.position[1] + ent.size * y * 0.5,
+		];
+		if (this.collidingPoint(pos)) {
+		    return true;
+		}
+	    }
+	}
+	return false;
+    }
+
     getCell(x, y) {
 	const prev = this.game.prevSector(this);
 	const next = this.game.nextSector(this);
@@ -124,7 +242,13 @@ class Sector {
 	}
 
 	if (quadrant == this.angle) {
-	    return this.grid[x - this.grid_offset[0]][y - this.grid_offset[1]];
+	    const new_x = x - this.grid_offset[0];
+	    const new_y = y - this.grid_offset[1];
+	    if (new_x < 0 || new_x >= quadrant_cell_width ||
+		new_y < 0 || new_y >= quadrant_cell_width) {
+		return 0;
+	    }
+	    return this.grid[new_x][new_y];
 	} else if (quadrant == (this.angle + 1) % 4) {
 	    if (next) {
 		return next.getCell(x, y);
@@ -164,9 +288,9 @@ class Sector {
 		const x = i + this.grid_offset[0];
 		const y = j + this.grid_offset[1];
 		const dist = Math.max(Math.abs(x), Math.abs(y));
-		if (dist <= 2 || dist >= (quadrant_cell_width - 1)) {
-		    continue;
-		}
+		// if (dist <= 1 || dist >= (quadrant_cell_width)) {
+		//     continue;
+		// }
 		const cell = this.getCell(x, y);
 		if (cell == 1) {
 		    ctx.fillStyle = '#804';
@@ -219,11 +343,10 @@ class Game {
 	    sector: this.sectors[3],
 	    game: this,
 	});
-	this.entities.push(this.player);
 
 	this.shake = 0;
     }
-
+    
     /// Returns `true` if the sector should be rendered
     setClipFor(sector) {
 	if (sector === this.player.sector) {
@@ -253,7 +376,7 @@ class Game {
     
     tick() {
 	var player_index = this.sectors.indexOf(this.player.sector);
-	while (player_index > (this.sectors.length - 3)) {
+	while (player_index > (this.sectors.length - 4)) {
 	    this.addSector();
 	}
 	while (player_index > 4) {
