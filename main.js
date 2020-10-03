@@ -227,6 +227,7 @@ class Player extends Entity {
 		    end += 8;
 		}
 		(() => {
+		    let start = 0;
 		    let new_end = end;
 		    let timer = 0;
 		    let x = this.position[0];
@@ -244,7 +245,8 @@ class Player extends Entity {
 			}
 			ctx.lineWidth = 2;
 			ctx.beginPath();
-			ctx.moveTo(0, 0);
+			start = start * 0.99 + new_end * 0.01;
+			ctx.moveTo(Math.cos(angle) * start, Math.sin(angle) * start);
 			ctx.lineTo(Math.cos(angle) * new_end, Math.sin(angle) * new_end);
 			ctx.stroke();
 			ctx.restore();
