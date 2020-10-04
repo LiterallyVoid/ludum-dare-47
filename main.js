@@ -7,12 +7,14 @@ const arena_size = 300; // radius
 const grid_size = 24;
 const quadrant_cell_width = Math.floor(arena_size / grid_size);
 
-const held_keys = {};
-const held_mouse_buttons = {};
+let held_keys = {};
+let held_mouse_buttons = {};
 const mouse_position = [0, 0];
 
 let load_max = 0;
 let load_done = 0;
+
+let show_start_button = 'Start';
 
 function resource_load(func) {
     load_max += 1;
@@ -80,7 +82,7 @@ class Entity {
     checkCollide(other) {
 	const offset = [
 	    this.position[0] - other.position[0],
-	    this.position[1] - other.position[1],
+	    this.position[1] - other.position[1],	
 	];
 	const dist = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
 	if (dist < (this.size + other.size) * 0.5) {
@@ -144,6 +146,31 @@ class Enemy extends Entity {
 		});
 	    })();
 	}
+	let x = this.position[0];
+	let y = this.position[1];
+	let vx = Math.random() * 8 - 4;
+	let vy = Math.random() * 8 - 4;
+	let sz = 0.3;
+	let timer = 0;
+	this.sector.particles.push(() => {
+	    x += vx;
+	    y += vy;
+	    vx *= 0.8;
+	    vy *= 0.8;
+	    ctx.save();
+	    ctx.translate(x, y);
+	    sz = (sz * 0.6) + 0.4;
+	    ctx.scale(sz, sz);
+	    ctx.textAlign = 'center';
+	    ctx.textBaseline = 'middle';
+	    ctx.font = 'Bold 18px Oxygen';
+	    ctx.fillStyle = `rgba(255, 255, 255, ${1.0 - Math.pow(timer / 30, 4.0)})`;
+	    ctx.fillText('+10', 0, 0);
+	    ctx.restore();
+
+	    timer++;
+	    return timer > 30;
+	});
     }
 
     tick() {
@@ -294,10 +321,12 @@ class Player extends Entity {
 
 class Sector {
     // angle: integer between 0 and 3
-    constructor(game, angle, spawn) {
+    constructor(game, spawn, prev) {
 	this.game = game;
 	
-	this.angle = angle;
+	this.angle = prev ? ((prev.angle + 1) % 4) : 0;
+	this.hue_offset = 20;
+	this.hue = prev ? ((prev.hue + this.hue_offset) % 360) : 0;
 	this.entities = [];
 	//this.shade = Math.random();
 	this.grid = [];
@@ -474,7 +503,7 @@ class Sector {
 	    const new_y = y - this.grid_offset[1];
 	    if (new_x < 0 || new_x >= quadrant_cell_width ||
 		new_y < 0 || new_y >= quadrant_cell_width) {
-		return 0;
+		return 1;
 	    }
 	    return this.grid[new_x][new_y];
 	} else if (quadrant == (this.angle + 1) % 4) {
@@ -518,10 +547,13 @@ class Sector {
 		//     continue;
 		// }
 		const cell = this.getCell(x, y);
+		const diff = angleDiff(this.angle * Math.PI * 0.5, Math.atan2(y + 0.5, x + 0.5));
+		const hue = this.hue + (diff / (Math.PI * 0.5)) * this.hue_offset;
+		const sat = 50;
 		if (cell == 1) {
-		    ctx.fillStyle = '#804';
+		    ctx.fillStyle = `hsl(${hue}, ${sat}%, 30%)`;
 		    ctx.fillRect(x * grid_size, y * grid_size, grid_size, grid_size);
-		    ctx.fillStyle = '#F08';
+		    ctx.fillStyle = `hsl(${hue}, ${sat}%, 50%)`;
 		    for (let i = 0; i < neighbors.length; i++) {
 			const new_cell = this.getCell(x + neighbors[i][0], y + neighbors[i][1]);
 			if (new_cell == 0) {
@@ -591,6 +623,7 @@ class Game {
 	this.player = this.entities[0]; // hope this works haha
 
 	this.shake = 0;
+	this.score = 0;
     }
     
     /// Returns `true` if the sector should be rendered
@@ -630,7 +663,6 @@ class Game {
 	    player_index--;
 	}
 
-	ctx.clearRect(0, 0, width, height);
 	ctx.save();
 	ctx.translate(width / 2, height / 2);
 	
@@ -671,6 +703,20 @@ class Game {
 	    }
 	}
 	ctx.restore();
+	if (this.player.dead) {
+	    show_start_button = 'Restart';
+	    ctx.save();
+	    ctx.textAlign = 'center';
+	    ctx.textBaseline = 'middle';
+	    ctx.fillStyle = '#FFF';
+	    ctx.shadowColor = '#000';
+	    ctx.shadowBlur = 5;
+	    ctx.font = '100px Oxygen';
+	    ctx.fillText("You Died", width / 2, height / 4);
+	    ctx.font = '50px Oxygen';
+	    ctx.fillText(`Score: ${this.score}`, width / 2, height / 2.5);
+	    ctx.restore();
+	}
     }
 
     prevSector(ref) {
@@ -690,12 +736,10 @@ class Game {
     // add another sector after the last sector
     addSector(spawn) {
 	if (this.sectors.length == 0) {
-	    this.sectors.push(new Sector(this, 0, spawn));
+	    this.sectors.push(new Sector(this, spawn, null));
 	    return;
 	}
-	this.sectors.push(new Sector(this,
-				     (this.sectors[this.sectors.length - 1].angle + 1) % 4,
-				     spawn));
+	this.sectors.push(new Sector(this, spawn, this.sectors[this.sectors.length - 1]));
     }
 
     removeSector() {
@@ -707,41 +751,93 @@ class Game {
 };
 
 let game;
+let handle_events = true;
 
 function begin() {
-    document.querySelector('#loading').className += ' done';
+    let spinner = document.querySelector('#loading');
+    if (spinner) spinner.className += ' done';
     setTimeout(() => {
-	let el = document.querySelector('#loading');
-	el.parentElement.removeChild(el);
+	if (spinner) spinner.parentElement.removeChild(spinner);
     }, 1000);
-    game = new Game();
     tick();
 }
 
+let current_start_button = null;
 function tick() {
-    game.tick();
+    if (current_start_button != show_start_button) {
+	current_start_button = show_start_button;
+	if (show_start_button == null) {
+	    document.querySelector('#start').style.display = 'none';
+	} else {
+	    document.querySelector('#start').style.display = 'block';
+	    document.querySelector('#start').textContent = show_start_button;
+	}
+    }
+    ctx.clearRect(0, 0, width, height);
+    if (game) {
+	game.tick();
+    } else {
+	ctx.save();
+	ctx.textAlign = 'center';
+	ctx.textBaseline = 'middle';
+	ctx.fillStyle = '#FFF';
+	ctx.shadowColor = '#000';
+	ctx.shadowBlur = 5;
+	ctx.font = '100px Oxygen';
+	ctx.fillText("{{game name}}", width / 2, height / 4);
+	ctx.font = '20px Oxygen';
+	ctx.fillText("Click to shoot | WASD or arrow keys to move | Go clockwise", width / 2, height / 2.5);
+	ctx.restore();
+    }
     requestAnimationFrame(tick);
 }
 
+function blur() {
+    held_keys = {};
+    held_mouse_buttons = {};
+}
+
+document.querySelector('#start').addEventListener('mousedown', (e) => {
+    handle_events = false;
+    blur();
+    setTimeout(() => {
+	handle_events = true;
+    }, 50);
+});
+
+document.querySelector('#start').addEventListener('click', (e) => {
+    game = new Game();
+    show_start_button = null;
+});
+
+window.addEventListener('blur', (e) => {
+    blur();
+});
+
 window.addEventListener('keydown', (e) => {
+    if (!handle_events) return;
     held_keys[e.keyCode || e.which || 0] = true;
     held_keys[String.fromCharCode(e.keyCode || e.which || 0)] = true;
 });
 
 window.addEventListener('keyup', (e) => {
+    if (!handle_events) return;
     delete held_keys[e.keyCode || e.which || 0];
     delete held_keys[String.fromCharCode(e.keyCode || e.which || 0)];
 });
 
 window.addEventListener('mousedown', (e) => {
+    if (!handle_events) return;
     held_mouse_buttons[e.button] = true;
 });
 
 window.addEventListener('mouseup', (e) => {
+    if (!handle_events) return;
     delete held_mouse_buttons[e.button];
 });
 
 window.addEventListener('mousemove', (e) => {
+    if (!handle_events) return;
     mouse_position[0] = e.clientX;
     mouse_position[1] = e.clientY;
 });
