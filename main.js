@@ -887,6 +887,22 @@ class Sector {
     }
 };
 
+function warntext(txt) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = 'Bold 50px Oxygen';
+    ctx.shadowColor = '#000';
+    if (Date.now() % 600 < 300) {
+	ctx.fillStyle = '#F60';
+    } else {
+	ctx.fillStyle = '#888';
+    }
+    ctx.shadowBlur = 3;
+    ctx.fillText(txt, width / 2, 40);
+    ctx.restore();
+}
+
 class Game {
     constructor() {
 	this.sectors = [];
@@ -942,11 +958,19 @@ class Game {
 	    this.removeSector();
 	    player_index--;
 	}
+
+	if (player_index == 0 && !this.player.dead) {
+	    this.shake /= 0.8;
+	    this.shake += 0.1;
+	}
 	
 	ctx.save();
 	ctx.translate(width / 2, height / 2);
 	
 	this.shake *= 0.8;
+	if (this.player.dead) {
+	    this.shake *= 0.5;
+	}
 	this.target_offset[0] *= 0.85;
 	this.target_offset[1] *= 0.85;
 	{
@@ -1035,6 +1059,9 @@ class Game {
 	    ctx.fillText("You Died", width / 2, height / 4);
 	    ctx.font = '50px Oxygen';
 	    ctx.fillText(`Score: ${this.score}`, width / 2, height / 2.5);
+	    if (player_index == 0) {
+		warntext("[INTENTIONAL GAME DESIGN]");
+	    }
 	    ctx.restore();
 	}
 	ctx.save();
@@ -1057,6 +1084,12 @@ class Game {
 	    ctx.fillStyle = `hsla(${(Date.now()/2)%360}, 50%, 50%, ${alpha})`;
 	    ctx.fillText(`COMBO x${streak_amount}`, 0, -23);
 	    ctx.restore();
+	}
+	if (!this.player.dead && player_index == 0) {
+	    if (this.shake > 20) {
+		this.player.dead = true;
+	    }
+	    warntext("GO THE OTHER WAY, PLEASE");
 	}
 	ctx.restore();
 	streak_reset();
