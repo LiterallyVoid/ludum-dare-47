@@ -16,6 +16,17 @@ let load_done = 0;
 
 let show_start_button = 'Start';
 
+let streak_amount = 0;
+
+function streak_next() {
+    streak_amount += 1;
+    return Math.pow(2, streak_amount - 1) * 5;
+}
+
+function streak_reset() {
+    streak_amount = 0;
+}
+
 function resource_load(func) {
     load_max += 1;
     func(() => {
@@ -152,6 +163,7 @@ class Enemy extends Entity {
 	let vy = Math.random() * 8 - 4;
 	let sz = 0.3;
 	let timer = 0;
+	let amt = streak_next();
 	this.sector.particles.push(() => {
 	    x += vx;
 	    y += vy;
@@ -165,12 +177,13 @@ class Enemy extends Entity {
 	    ctx.textBaseline = 'middle';
 	    ctx.font = 'Bold 18px Oxygen';
 	    ctx.fillStyle = `rgba(255, 255, 255, ${1.0 - Math.pow(timer / 30, 4.0)})`;
-	    ctx.fillText('+10', 0, 0);
+	    ctx.fillText(`+${amt}`, 0, 0);
 	    ctx.restore();
 
 	    timer++;
 	    return timer > 30;
 	});
+	this.game.score += amt;
     }
 
     tick() {
@@ -717,6 +730,14 @@ class Game {
 	    ctx.fillText(`Score: ${this.score}`, width / 2, height / 2.5);
 	    ctx.restore();
 	}
+	ctx.save();
+	ctx.textAlign = 'right';
+	ctx.textBaseline = 'top';
+	ctx.fillStyle = '#FFF';
+	ctx.font = 'Bold 30px Oxygen';
+	ctx.fillText(`${this.score}`, width - 20, 20);
+	ctx.restore();
+	streak_reset();
     }
 
     prevSector(ref) {
