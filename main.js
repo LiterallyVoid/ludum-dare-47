@@ -27,6 +27,15 @@ function streak_reset() {
     streak_amount = 0;
 }
 
+function checkKey(l) {
+    for (const key of l) {
+	if (held_keys[key]) {
+	    return 1;
+	}
+    }
+    return 0;
+}
+
 function resource_load(func) {
     load_max += 1;
     func(() => {
@@ -264,8 +273,8 @@ class Player extends Entity {
 	super.tick();
 	this.velocity[0] *= 0.5;
 	this.velocity[1] *= 0.5;
-	this.velocity[0] += ((held_keys['D'] || 0) - (held_keys['A'] || 0)) * 1.6;
-	this.velocity[1] += ((held_keys['S'] || 0) - (held_keys['W'] || 0)) * 1.6;
+	this.velocity[0] += (checkKey(['D', 39]) - checkKey(['A', 37])) * 1.6;
+	this.velocity[1] += (checkKey(['S', 40]) - checkKey(['W', 38])) * 1.6;;
 	
 	this.refire++;
 
@@ -337,9 +346,9 @@ class Sector {
     constructor(game, spawn, prev) {
 	this.game = game;
 	
-	this.angle = prev ? ((prev.angle + 1) % 4) : 0;
+	this.angle = prev ? ((prev.angle + 1) % 4) : Math.floor(Math.random() * 4);
 	this.hue_offset = 20;
-	this.hue = prev ? ((prev.hue + this.hue_offset) % 360) : 0;
+	this.hue = prev ? ((prev.hue + this.hue_offset) % 360) : (Math.random() * 360);
 	this.entities = [];
 	//this.shade = Math.random();
 	this.grid = [];
@@ -377,6 +386,7 @@ class Sector {
 	}
 
 	const mirror = Math.random() < 0.5 ? false : true;
+
 	
 	for (let i = 0; i < quadrant_cell_width; i++) {
 	    this.grid.push([]);
