@@ -265,7 +265,6 @@ class Player extends Entity {
     collide(ent) {
 	if (ent && ent instanceof Enemy) {
 	    this.dead = true;
-	    console.log('player ded');
 	}
     }
 
