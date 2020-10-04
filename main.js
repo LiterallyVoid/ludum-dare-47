@@ -15,8 +15,7 @@ let load_max = 0;
 let load_done = 0;
 
 let show_start_button = 'Start';
-
-let streak_amount = 0;
+let mania = false;
 
 class Track {
     constructor(url, beats, options) {
@@ -25,8 +24,8 @@ class Track {
 	this.time = 0;
 	this.travel = 9999;
 	this.beat = [' ', ' ', ' ', ' '];
-	this.volume = options.volume || 0.2;
-	this.howl = new Howl({src: [url], volume: options.volume || 0.2});
+	this.volume = (options.volume || 1) * 0.05;
+	this.howl = new Howl({src: [url], volume: this.volume});
     }
 
     tick(rate) {
@@ -82,13 +81,20 @@ class Music {
     }
 };
 
+let streak_amount = 0;
+let streak_timer = 0;
+
 function streak_next() {
     streak_amount += 1;
+    streak_timer = 22;
     return Math.pow(2, streak_amount - 1) * 5;
 }
 
 function streak_reset() {
-    streak_amount = 0;
+    streak_timer--;
+    if (streak_timer < 0) {
+	streak_amount = 0;
+    }
 }
 
 function checkKey(l) {
@@ -136,6 +142,7 @@ class Entity {
 	this.size = 0; // diameter
 	this.sector = options.sector;
 	this.hit_wall = false;
+	this.bounce = 0;
 	options.sector.entities.push(this);
     }
 
@@ -152,13 +159,13 @@ class Entity {
 	this.position[0] += this.velocity[0];
 	if (this.sector.colliding(this) && !start_collide) {
 	    this.position[0] -= this.velocity[0];
-	    this.velocity[0] = 0;
+	    this.velocity[0] *= -this.bounce;
 	    this.hit_wall = true;
 	}
 	this.position[1] += this.velocity[1];
 	if (this.sector.colliding(this) && !start_collide) {
 	    this.position[1] -= this.velocity[1];
-	    this.velocity[1] = 0;
+	    this.velocity[1] *= -this.bounce;
 	    this.hit_wall = true;
 	}
     }
@@ -185,24 +192,31 @@ class Enemy extends Entity {
 	this.size = 12;
 	this.spottedPlayer = false;
 	this.rand_vel = [0, 0];
+	this.bounce = 0.9;
+
+	this.timer = -1;
     }
 
     collide(other) {
 	let offset = [other.position[0] - this.position[0], other.position[1] - this.position[1]];
 	this.velocity[0] -= offset[0] * 0.2;
 	this.velocity[1] -= offset[1] * 0.2;
+
+	if (other instanceof Player) {
+	    this.timer = 0;
+	}
     }
 
     kill() {
 	for (let i = 0; i < 10; i++) {
 	    (() => {
 		let timer = 0;
-		let sz = Math.random() * 10;
+		let sz = Math.random() * 15;
 		let szmax = sz * (Math.random() * 0.6 + 1);
 		let x = this.position[0];
 		let y = this.position[1];
 		let r = Math.random() * Math.PI * 2;
-		let v = Math.random() * 4;
+		let v = Math.random() * 8;
 		let hit = Math.random() * 20;
 		let c = Math.random() * 255;
 		this.sector.particles.push(() => {
@@ -229,6 +243,34 @@ class Enemy extends Entity {
 		    return timer > 100;
 		});
 	    })();
+	}
+	for (let i = 0; i < 3; i++) {
+	    let x = this.position[0];
+	    let y = this.position[1];
+	    let sz = 0;
+	    let lsz = 20;
+	    let timer = 0;
+	    let r = Math.random() * 360;
+	    let s = Math.random();
+	    let tsz = Math.random() * 50 + 20;
+	    let amt = Math.random() * 0.05 + 0.05;
+	    this.sector.particles.push(() => {
+		sz = (sz * (1 - amt)) + tsz * amt;
+		lsz *= 0.9;
+		ctx.save();
+		ctx.translate(x, y);
+		ctx.rotate(r);
+		ctx.scale(1, s);
+		ctx.strokeStyle = `rgba(0, 255, 0, ${ 1.0 - (timer / 30) })`;
+		ctx.lineWidth = lsz;
+		ctx.beginPath();
+		ctx.arc(0, 0, sz, 0, Math.PI * 2);
+		ctx.stroke();
+		ctx.restore();
+
+		timer++;
+		return timer > 30;
+	    });
 	}
 	let x = this.position[0];
 	let y = this.position[1];
@@ -278,30 +320,153 @@ class Enemy extends Entity {
 	}
 
 	if (Math.random() < 0.5) {
-	    this.rand_vel[0] = Math.random() * 2 - 1;
-	    this.rand_vel[1] = Math.random() * 2 - 1;
+	    this.rand_vel[0] = Math.random() * 1 - 0.5;
+	    this.rand_vel[1] = Math.random() * 1 - 0.5;
 	}
-	if (this.spottedPlayer) {
+	if (this.spottedPlayer && this.timer == -1) {
 	    this.velocity[0] += this.rand_vel[0];
 	    this.velocity[1] += this.rand_vel[1];
 	    this.velocity[0] += offset[0] * 0.007;
 	    this.velocity[1] += offset[1] * 0.007;
 	}
 
-    	ctx.fillStyle = "#F00";
+	if (this.timer >= 0) {
+	    this.timer++;
+	    if (this.timer > 20) {
+		explode(this, 50, 0.8, 0);
+	    }
+	}
+
+	if (this.timer >= 0) {
+	    if (this.timer % 4 < 2) {
+    		ctx.fillStyle = "#F00";
+	    } else {
+    		ctx.fillStyle = "#FFF";
+	    }
+	} else {
+    	    ctx.fillStyle = "#F00";
+	}
 	ctx.beginPath();
 	ctx.arc(this.position[0], this.position[1], 10, 0, Math.PI * 2);
 	ctx.fill();
     }
 };
 
+function bullet(ent, angle, limit, pen) {
+    let end = 0;
+    for (let j = 0; j < 100; j++) {
+	if (limit && end > limit) break;
+	let pos = [
+	    ent.position[0] + Math.cos(angle) * end,
+	    ent.position[1] + Math.sin(angle) * end,
+	];
+	if (ent.sector.collidingPoint(pos)) {
+	    pen -= 8;
+	    if (pen < 0) break;
+	}
+	ent.sector.entitiesAt(pos, (o) => {
+	    if (o == ent) {
+		return;
+	    }
+	    if (o instanceof Enemy || o instanceof Player) {
+		if (o instanceof Enemy) {
+		    if (o.timer < 0) {
+			o.timer = 0;
+		    } else {
+			o.timer -= 1;
+			if (o.timer < 0) {
+			    o.timer = 0;
+			}
+		    }
+		} else {
+		    o.dead = true;
+		}
+	    }
+	});
+	end += 8;
+    }
+    (() => {
+	let start = 0;
+	let new_end = end;
+	let timer = 0;
+	let x = ent.position[0];
+	let y = ent.position[1];
+	ent.sector.particles.push(() => {
+	    ctx.save();
+	    ctx.translate(x, y);
+	    //ctx.rotate(angle);
+	    if (timer === 0 || timer === 2) {
+		ctx.strokeStyle = '#FF4';
+	    } else if (timer === 1 || timer === 3) {
+		ctx.strokeStyle = '#F00';
+	    } else {
+		ctx.strokeStyle = `rgba(192, 192, 192, ${ (1.0 - (timer / 30)) * 0.3 })`;
+	    }
+	    ctx.lineWidth = 2;
+	    ctx.beginPath();
+	    start = start * 0.99 + new_end * 0.01;
+	    ctx.moveTo(Math.cos(angle) * start, Math.sin(angle) * start);
+	    ctx.lineTo(Math.cos(angle) * new_end, Math.sin(angle) * new_end);
+	    ctx.stroke();
+	    ctx.restore();
+	    timer += 1;
+	    return timer > 30;
+	});
+    })();
+}
+
+const explode_sound = new Howl({
+    src: ['explode.wav'],
+    volume: 0.4,
+});
+
+function explode(ent, shake, radius, pen) {
+    ent.game.shake += shake;
+    ent.dead = true;
+    explode_sound.play();
+    for (let i = 0; i < 30; i++) {
+	bullet(ent, Math.random() * 360, (Math.random() * 60 + 30) * radius, pen);
+    }
+}
+
+class Grenade extends Entity {
+    constructor(options) {
+	super(options);
+	this.size = 1;
+	this.bounce = 0.9;
+
+	this.timer = 20;
+    }
+
+    tick() {
+	super.tick();
+	this.velocity[0] *= 0.9;
+	this.velocity[1] *= 0.9;
+    	ctx.fillStyle = "#999";
+	ctx.beginPath();
+	ctx.arc(this.position[0], this.position[1], 8, 0, Math.PI * 2);
+	ctx.fill();
+	this.timer--;
+	if (this.timer < 0) {
+	    explode(this, 35, 1, 30);
+	}
+    }
+}
+
 class Player extends Entity {
     constructor(options) {
 	super(options);
 
+	this.attack_sound = new Howl({
+	    src: ['attack.wav'],
+	    volume: 0.2,
+	});
+	
 	this.size = 12;
 	
-	this.refire = 0;
+	this.refire = 6030;
+	this.grenade_refire = 600;
+	this.grenade_prime = -1;
 
 	for (let i = 0; i < 4; i++) {
 	    let x = this.position[0];
@@ -325,13 +490,7 @@ class Player extends Entity {
 	    });
 	}
     }
-
-    collide(ent) {
-	if (ent && ent instanceof Enemy) {
-	    this.dead = true;
-	}
-    }
-
+    
     tick() {
 	super.tick();
 	this.velocity[0] *= 0.5;
@@ -340,61 +499,59 @@ class Player extends Entity {
 	this.velocity[1] += (checkKey(['S', 40]) - checkKey(['W', 38])) * 1.6;;
 	
 	this.refire++;
+	if (this.grenade_prime == -1) {
+	    this.grenade_refire++;
+	}
 
-	if (this.refire > 30 && held_mouse_buttons[0]) {
+	if (this.refire > 4 && held_mouse_buttons[0]) {
+	    this.attack_sound.play();
 	    this.refire = 0;
-	    this.game.shake += 20;
+	    this.game.shake += 5;
 	    music.rate = 1;
-	    for (let i = 0; i < 4; i++) {
-		let angle = Math.atan2(
+	    let angle = Math.atan2(
+		mouse_position[1] - (this.position[1] + height / 2),
+		mouse_position[0] - (this.position[0] + width / 2)
+	    );
+	    angle += (Math.random() * 2 - 1) * 0.1;
+	    this.game.target_offset[0] -= Math.cos(angle) * 20;
+	    this.game.target_offset[1] -= Math.sin(angle) * 20;
+	    bullet(this, angle, 0, 0);
+	}
+
+	if (this.grenade_refire > 60 && held_mouse_buttons[2]) {
+	    this.grenade_prime = 0;
+	    this.grenade_refire = 0;
+	}
+	if (this.grenade_prime >= 0) {
+	    let angle = Math.atan2(
+		mouse_position[1] - (this.position[1] + height / 2),
+		mouse_position[0] - (this.position[0] + width / 2)
+	    );
+	    let curv = this.grenade_prime / 30;
+	    curv = 1 - Math.pow(1 - curv, 2.0);
+	    this.game.target_offset[0] += Math.cos(angle) * curv * 10;
+	    this.game.target_offset[1] += Math.sin(angle) * curv * 10;
+	    this.grenade_prime += 1;
+	    if (!held_mouse_buttons[2] || this.grenade_prime > 40) {
+		this.attack_sound.play();
+		this.refire = 0;
+		let g = new Grenade({
+		    pos: [this.position[0], this.position[1]],
+		    game: this.game,
+		    sector: this.sector,
+		});
+		g.timer = 10 + this.grenade_prime;
+		let offset = [
+		    mouse_position[0] - (this.position[0] + width / 2),
 		    mouse_position[1] - (this.position[1] + height / 2),
-		    mouse_position[0] - (this.position[0] + width / 2)
-		);
-		angle += (Math.random() * 2 - 1) * 0.15;
-		let end = 0;
-		for (let j = 0; j < 100; j++) {
-		    let pos = [
-			this.position[0] + Math.cos(angle) * end,
-			this.position[1] + Math.sin(angle) * end,
-		    ];
-		    if (this.sector.collidingPoint(pos)) {
-			break;
-		    }
-		    this.sector.entitiesAt(pos, (ent) => {
-			if (ent instanceof Enemy) {
-			    ent.dead = true;
-			}
-		    });
-		    end += 8;
-		}
-		(() => {
-		    let start = 0;
-		    let new_end = end;
-		    let timer = 0;
-		    let x = this.position[0];
-		    let y = this.position[1];
-		    this.sector.particles.push(() => {
-			ctx.save();
-			ctx.translate(x, y);
-			//ctx.rotate(angle);
-			if (timer === 0 || timer === 2) {
-			    ctx.strokeStyle = '#FF4';
-			} else if (timer === 1 || timer === 3) {
-			    ctx.strokeStyle = '#F00';
-			} else {
-			    ctx.strokeStyle = `rgba(192, 192, 192, ${ (1.0 - (timer / 30)) * 0.3 })`;
-			}
-			ctx.lineWidth = 2;
-			ctx.beginPath();
-			start = start * 0.99 + new_end * 0.01;
-			ctx.moveTo(Math.cos(angle) * start, Math.sin(angle) * start);
-			ctx.lineTo(Math.cos(angle) * new_end, Math.sin(angle) * new_end);
-			ctx.stroke();
-			ctx.restore();
-			timer += 1;
-			return timer > 30;
-		    });
-		})();
+		];
+		let dist = Math.sqrt(offset[0] * offset[0] + offset[1] * offset[1]);
+		let spd = this.grenade_prime * 0.7 + 8;
+		g.velocity = [
+		    Math.cos(angle) * spd,
+		    Math.sin(angle) * spd,
+		];
+		this.grenade_prime = -1;
 	    }
 	}
 
@@ -494,13 +651,15 @@ class Sector {
 		const pos = [(i + this.grid_offset[0] + 0.5) * grid_size, (j + this.grid_offset[1] + 0.5) * grid_size];
 		if (spawn.enemy) {
 		    if (template_cell == 2) {
-			let ent = new Enemy({
-			    pos: pos,
-			    game: this.game,
-			    sector: this,
-			});
-			ent.velocity[0] = Math.random() * 20 - 10;
-			ent.velocity[1] = Math.random() * 20 - 10;
+			for (let i = 0; i < (mania ? 35 : 1); i++) {
+			    let ent = new Enemy({
+				pos: pos,
+				game: this.game,
+				sector: this,
+			    });
+			    ent.velocity[0] = Math.random() * 20 - 10;
+			    ent.velocity[1] = Math.random() * 20 - 10;
+			}
 		    }
 		}
 		if (spawn.player) {
@@ -543,6 +702,7 @@ class Sector {
 	const prev = this.game.prevSector(this);
 	const next = this.game.nextSector(this);
 	for (const sec of [prev, next, this]) {
+	    if (!sec) continue;
 	    for (let i = 0; i < sec.entities.length; i++) {
 		const ent = sec.entities[i];
 		const offset = [
@@ -602,9 +762,14 @@ class Sector {
 		return prev.getCell(x, y);
 	    }
 	}
-	return 0;
+	return 1;
     }
 
+    hueAt(x, y) {
+	const diff = angleDiff(this.angle * Math.PI * 0.5, Math.atan2(y + 0.5, x + 0.5));
+	return this.hue + (diff / (Math.PI * 0.5)) * this.hue_offset;
+    }
+    
     // different function because all sectors must render before any entities
     render() {
 	// ctx.fillStyle = `rgb(${this.shade * 255}, ${this.shade * 255}, ${this.shade * 255})`;
@@ -634,8 +799,7 @@ class Sector {
 		//     continue;
 		// }
 		const cell = this.getCell(x, y);
-		const diff = angleDiff(this.angle * Math.PI * 0.5, Math.atan2(y + 0.5, x + 0.5));
-		const hue = this.hue + (diff / (Math.PI * 0.5)) * this.hue_offset;
+		const hue = this.hueAt(x, y);
 		const sat = 50;
 		if (cell == 1) {
 		    ctx.fillStyle = `hsl(${hue}, ${sat}%, 30%)`;
@@ -710,6 +874,8 @@ class Game {
 	this.player = this.entities[0]; // hope this works haha
 
 	this.shake = 0;
+	this.offset = [0, 0];
+	this.target_offset = [0, 0];
 	this.score = 0;
 	music.target_rate = 0.7;
     }
@@ -754,9 +920,17 @@ class Game {
 	ctx.save();
 	ctx.translate(width / 2, height / 2);
 	
-	this.shake *= 0.6;
+	this.shake *= 0.8;
+	this.target_offset[0] *= 0.85;
+	this.target_offset[1] *= 0.85;
+	{
+	    const lerp = 0.5;
+	    this.offset[0] = (this.offset[0] * (1 - lerp) + this.target_offset[0] * lerp);
+	    this.offset[1] = (this.offset[1] * (1 - lerp) + this.target_offset[1] * lerp);
+	}
 	var shake = this.shake;// * this.shake;
 	ctx.translate(Math.round((Math.random() * 2 - 1) * shake), Math.round((Math.random() * 2 - 1) * shake));
+	ctx.translate(Math.round(this.offset[0]), Math.round(this.offset[1]));
 	
 	for (const sector of this.sectors) {
 	    ctx.save();
@@ -790,6 +964,37 @@ class Game {
 		}
 	    }
 	}
+	ctx.save();
+	const hue = this.player.sector.hueAt(this.player.position[0], this.player.position[1]);
+	ctx.fillStyle = `hsl(${hue}, 50%, 30%)`;
+	ctx.beginPath();
+	const center_sz = 20;
+	ctx.arc(0, 0, center_sz, 0, Math.PI * 2);
+	ctx.fill();
+	ctx.beginPath();
+	const angle = Math.atan2(this.player.position[1], this.player.position[0]);
+	let points = [
+	    [
+		Math.cos(angle + Math.PI * 0.5) * center_sz,
+		Math.sin(angle + Math.PI * 0.5) * center_sz,
+	    ],
+	    [
+		Math.cos(angle - Math.PI * 0.5) * center_sz,
+		Math.sin(angle - Math.PI * 0.5) * center_sz,
+	    ],
+	];
+	for (const i of [1, 0]) {
+	    let p = this.player.position;
+	    let pt = points[i];
+	    points.push([(pt[0] - p[0]) * 1000 + p[0], (pt[1] - p[1]) * 1000 + p[1]]);
+	}
+	//console.log(points);
+	ctx.moveTo(points[points.length - 1][0], points[points.length - 1][1]);
+	for (let i = 0; i < points.length; i++) {
+	    ctx.lineTo(points[i][0], points[i][1]);
+	}
+	ctx.fill();
+	ctx.restore();
 	ctx.restore();
 	if (this.player.dead) {
 	    show_start_button = 'Restart';
@@ -810,8 +1015,17 @@ class Game {
 	ctx.textAlign = 'right';
 	ctx.textBaseline = 'top';
 	ctx.fillStyle = '#FFF';
-	ctx.font = 'Bold 30px Oxygen';
+	ctx.font = 'Bold 50px Oxygen';
 	ctx.fillText(`${this.score}`, width - 20, 20);
+	ctx.shadowColor = '#000';
+	ctx.shadowBlur = 3;
+	ctx.textAlign = 'center';
+	if (streak_amount > 1) {
+	    ctx.fillStyle = `hsla(${(Date.now()/2)%360}, 50%, 50%, 0.3)`;
+	    ctx.fillRect(0, 10, width, 66);
+	    ctx.fillStyle = `hsl(${(Date.now()/2)%360}, 50%, 50%)`;
+	    ctx.fillText(`COMBO x${streak_amount}`, width / 2, 20);
+	}
 	ctx.restore();
 	streak_reset();
     }
@@ -888,8 +1102,8 @@ function realtick() {
 	ctx.shadowBlur = 5;
 	ctx.font = '100px Oxygen';
 	ctx.fillText("{{game name}}", width / 2, height / 4);
-	ctx.font = '20px Oxygen';
-	ctx.fillText("Click to shoot | WASD or arrow keys to move | Go clockwise", width / 2, height / 2.5);
+	ctx.font = '14px Oxygen';
+	ctx.fillText("Click to shoot | Right-click to throw grenade | WASD or arrow keys to move | Go clockwise", width / 2, height / 2.5);
 	ctx.restore();
     }
 }
@@ -949,12 +1163,19 @@ window.addEventListener('keyup', (e) => {
 
 window.addEventListener('mousedown', (e) => {
     if (!handle_events) return;
+    e.preventDefault();
     held_mouse_buttons[e.button] = true;
 });
 
 window.addEventListener('mouseup', (e) => {
     if (!handle_events) return;
+    e.preventDefault();
     delete held_mouse_buttons[e.button];
+});
+
+window.addEventListener('contextmenu', (e) => {
+    if (!handle_events) return;
+    e.preventDefault();
 });
 
 window.addEventListener('mousemove', (e) => {
