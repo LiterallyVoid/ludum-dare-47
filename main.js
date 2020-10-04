@@ -840,6 +840,31 @@ class Sector {
     }
     
     tick() {
+	const prev = this.game.prevSector(this);
+	if (!prev && Math.random() < 0.1) {
+	    let timer = 0;
+	    let sz = Math.random() * arena_size * 1.414;
+	    let a = (Math.random() + this.angle) * Math.PI * 0.5 + 0.2;
+	    let v = Math.random() * 0.003;
+	    this.particles.push(() => {
+		a += v;
+		ctx.save();
+		ctx.rotate(a);
+		ctx.strokeStyle = ctx.fillStyle = `rgba(0, 255, 0, ${(timer/50) * ((100-timer)/50)})`;
+		ctx.lineWidth = 10;
+		ctx.beginPath();
+		ctx.arc(0, 0, sz, -0.2, 0);
+		ctx.stroke();
+		ctx.beginPath();
+		ctx.moveTo(sz - 20, 0);
+		ctx.lineTo(sz, 20);
+		ctx.lineTo(sz + 20, 0);
+		ctx.fill();
+		ctx.restore();
+		timer++;
+		return timer > 100;
+	    });
+	}
 	const next = this.game.nextSector(this);
 	for (let i = 0; i < this.entities.length; i++) {
 	    const entity = this.entities[i];
@@ -908,6 +933,7 @@ class Game {
     }
     
     tick() {
+
 	var player_index = this.sectors.indexOf(this.player.sector);
 	while (player_index > (this.sectors.length - 4)) {
 	    this.addSector({enemy: true, player: false});
@@ -916,7 +942,7 @@ class Game {
 	    this.removeSector();
 	    player_index--;
 	}
-
+	
 	ctx.save();
 	ctx.translate(width / 2, height / 2);
 	
