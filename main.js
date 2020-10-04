@@ -1177,7 +1177,7 @@ function realtick() {
 	ctx.fillStyle = '#FFF';
 	ctx.shadowColor = '#000';
 	ctx.shadowBlur = 5;
-	ctx.font = '100px Oxygen';
+	ctx.font = 'Bold 100px Oxygen';
 	ctx.fillText("Angriff", width / 2, height / 4);
 	ctx.font = '14px Oxygen';
 	ctx.fillText("Click to shoot | Right-click to throw grenade | WASD or arrow keys to move | Go clockwise", width / 2, height / 2.5);
