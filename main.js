@@ -86,7 +86,7 @@ let streak_timer = 0;
 
 function streak_next() {
     streak_amount += 1;
-    streak_timer = 22;
+    streak_timer = 30;
     return Math.pow(2, streak_amount - 1) * 5;
 }
 
@@ -1047,10 +1047,16 @@ class Game {
 	ctx.shadowBlur = 3;
 	ctx.textAlign = 'center';
 	if (streak_amount > 1) {
-	    ctx.fillStyle = `hsla(${(Date.now()/2)%360}, 50%, 50%, 0.3)`;
-	    ctx.fillRect(0, 10, width, 66);
-	    ctx.fillStyle = `hsl(${(Date.now()/2)%360}, 50%, 50%)`;
-	    ctx.fillText(`COMBO x${streak_amount}`, width / 2, 20);
+	    const alpha = 1.0 - Math.pow(1.0 - (streak_timer / 30), 4.0);
+	    const size = 1.0 + Math.pow((streak_timer / 30), 8.0) * 0.5;
+	    ctx.save();
+	    ctx.translate(width / 2, 43);
+	    ctx.scale(size, size);
+	    ctx.fillStyle = `hsla(${(Date.now()/2)%360}, 50%, 50%, ${0.3 * alpha})`;
+	    ctx.fillRect(-width, -33, width * 2, 66);
+	    ctx.fillStyle = `hsla(${(Date.now()/2)%360}, 50%, 50%, ${alpha})`;
+	    ctx.fillText(`COMBO x${streak_amount}`, 0, -23);
+	    ctx.restore();
 	}
 	ctx.restore();
 	streak_reset();
