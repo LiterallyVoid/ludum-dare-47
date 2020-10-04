@@ -978,7 +978,7 @@ class Game {
 	    this.offset[0] = (this.offset[0] * (1 - lerp) + this.target_offset[0] * lerp);
 	    this.offset[1] = (this.offset[1] * (1 - lerp) + this.target_offset[1] * lerp);
 	}
-	var shake = this.shake;// * this.shake;
+	var shake = this.shake * 0.3;// * this.shake;
 	ctx.translate(Math.round((Math.random() * 2 - 1) * shake), Math.round((Math.random() * 2 - 1) * shake));
 	ctx.translate(Math.round(this.offset[0]), Math.round(this.offset[1]));
 	
@@ -1178,7 +1178,7 @@ function realtick() {
 	ctx.shadowColor = '#000';
 	ctx.shadowBlur = 5;
 	ctx.font = '100px Oxygen';
-	ctx.fillText("{{game name}}", width / 2, height / 4);
+	ctx.fillText("", width / 2, height / 4);
 	ctx.font = '14px Oxygen';
 	ctx.fillText("Click to shoot | Right-click to throw grenade | WASD or arrow keys to move | Go clockwise", width / 2, height / 2.5);
 	ctx.restore();
