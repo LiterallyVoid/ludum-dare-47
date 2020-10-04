@@ -1016,34 +1016,46 @@ class Game {
 	}
 	ctx.save();
 	const hue = this.player.sector.hueAt(this.player.position[0], this.player.position[1]);
-	ctx.fillStyle = `hsl(${hue}, 50%, 30%)`;
-	ctx.beginPath();
-	const center_sz = 20;
-	ctx.arc(0, 0, center_sz, 0, Math.PI * 2);
-	ctx.fill();
-	ctx.beginPath();
-	const angle = Math.atan2(this.player.position[1], this.player.position[0]);
-	let points = [
-	    [
-		Math.cos(angle + Math.PI * 0.5) * center_sz,
-		Math.sin(angle + Math.PI * 0.5) * center_sz,
-	    ],
-	    [
-		Math.cos(angle - Math.PI * 0.5) * center_sz,
-		Math.sin(angle - Math.PI * 0.5) * center_sz,
-	    ],
-	];
-	for (const i of [1, 0]) {
-	    let p = this.player.position;
-	    let pt = points[i];
-	    points.push([(pt[0] - p[0]) * 1000 + p[0], (pt[1] - p[1]) * 1000 + p[1]]);
+	const render_nogo = (center_sz) => {
+	    ctx.save();
+	    ctx.beginPath();
+	    ctx.fill();
+	    ctx.beginPath();
+	    const p = this.player.position;
+	    const dst = Math.sqrt(p[0] * p[0] + p[1] * p[1]);
+	    const angle = Math.atan2(p[1], p[0]);
+	    const offset = (Math.PI * 0.5) - Math.atan2(center_sz, dst);
+	    let points = [
+		[
+		    Math.cos(angle + offset) * center_sz,
+		    Math.sin(angle + offset) * center_sz,
+		],
+		[
+		    Math.cos(angle - offset) * center_sz,
+		    Math.sin(angle - offset) * center_sz,
+		],
+	    ];
+	    for (const i of [1, 0]) {
+		let pt = points[i];
+		if (i === 1) {
+		    ctx.arc(0, 0, center_sz, angle - offset, angle + offset);
+		}
+		points.push([(pt[0] - p[0]) * 1000 + p[0], (pt[1] - p[1]) * 1000 + p[1]]);
+	    }
+	    //console.log(points);
+	    ctx.moveTo(points[points.length - 1][0], points[points.length - 1][1]);
+	    for (let i = 0; i < points.length; i++) {
+		ctx.lineTo(points[i][0], points[i][1]);
+	    }
+	    ctx.fill();
+	    ctx.restore();
 	}
-	//console.log(points);
-	ctx.moveTo(points[points.length - 1][0], points[points.length - 1][1]);
-	for (let i = 0; i < points.length; i++) {
-	    ctx.lineTo(points[i][0], points[i][1]);
+	for (let i = 0; i < 12; i++) {
+	    ctx.fillStyle = '#000';
+	    ctx.globalAlpha = Math.pow(1 - (i / 11), 3.0);
+	    render_nogo(20 + i);
+	    ctx.globalAlpha = 1.0;
 	}
-	ctx.fill();
 	ctx.restore();
 	ctx.restore();
 	if (this.player.dead) {
