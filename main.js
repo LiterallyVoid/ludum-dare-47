@@ -18,6 +18,70 @@ let show_start_button = 'Start';
 
 let streak_amount = 0;
 
+class Track {
+    constructor(url, beats, options) {
+	options = options || {};
+	this.rate = options.rate || 1;
+	this.time = 0;
+	this.travel = 9999;
+	this.beat = [' ', ' ', ' ', ' '];
+	this.volume = options.volume || 0.2;
+	this.howl = new Howl({src: [url], volume: options.volume || 0.2});
+    }
+
+    tick(rate) {
+	this.time += this.rate * rate;
+	if (this.time > 10) {
+	    this.time -= 10;
+	    this.travel++;
+	    if (this.travel >= this.beat.length) {
+		const chars = '    #/;!';
+		this.beat[Math.floor(Math.random() * 4)] = chars[Math.floor(Math.random() * chars.length)];
+		this.travel = 0;
+	    }
+	    const note = this.beat[this.travel];
+	    if (note == ' ') return;
+	    if (note == '#') {
+		this.howl.rate(1);
+		this.howl.volume(this.volume);
+	    }
+	    if (note == '/') {
+		this.howl.rate(1.5);
+		this.howl.volume(this.volume);
+	    }
+	    if (note == ';') {
+		this.howl.rate(1);
+		this.howl.volume(this.volume * 0.5);
+	    }
+	    if (note == '!') {
+		this.howl.rate(1);
+		this.howl.volume(this.volume * 0.3);
+	    }
+	    this.howl.play();
+	}
+    }
+};
+
+class Music {
+    constructor() {
+	this.tracks = [
+	    new Track('music/01.wav'),
+	    new Track('music/02.wav'),
+	    new Track('music/04.wav'),
+	    new Track('music/05.wav'),
+	];
+	this.rate = 1;
+	this.target_rate = 0.7;
+    }
+    
+    tick() {
+	this.rate = this.rate * 0.97 + this.target_rate * 0.03;
+	for (const track of this.tracks) {
+	    track.tick(this.rate);
+	}
+    }
+};
+
 function streak_next() {
     streak_amount += 1;
     return Math.pow(2, streak_amount - 1) * 5;
@@ -280,6 +344,7 @@ class Player extends Entity {
 	if (this.refire > 30 && held_mouse_buttons[0]) {
 	    this.refire = 0;
 	    this.game.shake += 20;
+	    music.rate = 1;
 	    for (let i = 0; i < 4; i++) {
 		let angle = Math.atan2(
 		    mouse_position[1] - (this.position[1] + height / 2),
@@ -646,6 +711,7 @@ class Game {
 
 	this.shake = 0;
 	this.score = 0;
+	music.target_rate = 0.7;
     }
     
     /// Returns `true` if the sector should be rendered
@@ -727,6 +793,7 @@ class Game {
 	ctx.restore();
 	if (this.player.dead) {
 	    show_start_button = 'Restart';
+	    music.target_rate = 0.4;
 	    ctx.save();
 	    ctx.textAlign = 'center';
 	    ctx.textBaseline = 'middle';
@@ -789,11 +856,16 @@ function begin() {
     setTimeout(() => {
 	if (spinner) spinner.parentElement.removeChild(spinner);
     }, 1000);
-    tick();
+    requestAnimationFrame(tick);
 }
 
 let current_start_button = null;
-function tick() {
+let music = new Music();
+let budget = 0;
+let time = undefined;
+function realtick() {
+    music.tick();
+    
     if (current_start_button != show_start_button) {
 	current_start_button = show_start_button;
 	if (show_start_button == null) {
@@ -803,6 +875,7 @@ function tick() {
 	    document.querySelector('#start').textContent = show_start_button;
 	}
     }
+    
     ctx.clearRect(0, 0, width, height);
     if (game) {
 	game.tick();
@@ -818,6 +891,24 @@ function tick() {
 	ctx.font = '20px Oxygen';
 	ctx.fillText("Click to shoot | WASD or arrow keys to move | Go clockwise", width / 2, height / 2.5);
 	ctx.restore();
+    }
+}
+
+const target_mspf = 1000 / 60;
+
+function tick(timestamp) {
+    if (time === undefined) time = timestamp - (1000 / 60);
+    const delta = timestamp - time;
+    time = timestamp;
+
+    budget += delta;
+    let amt = Math.floor(budget / target_mspf);
+    budget -= target_mspf * amt;
+    if (amt > 2) {
+	amt = 2;
+    }
+    for (let i = 0; i < amt; i++) {
+	realtick();
     }
     requestAnimationFrame(tick);
 }
